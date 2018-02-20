@@ -6,7 +6,7 @@
 DEFINE_double(kp, 4.0, "kP");
 DEFINE_double(kd, 2.0, "kD");
 DEFINE_double(kpm, 10.0, "kPM");
-DEFINE_double(kdm, 1.0, "kDM");
+DEFINE_double(kdm, 0.1, "kDM");
 
 namespace aero {
 
