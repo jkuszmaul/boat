@@ -8,7 +8,10 @@ cc_library(
   name="dynamics",
   hdrs=["dynamics.h", "params.h"],
   srcs=["dynamics.cc"],
-  deps=["@boost//:boost", "@eigen//:eigen"],
+  deps=["@boost//:boost",
+        "@eigen//:eigen",
+        "@gflags//:gflags"],
+  linkopts = ["-pthread"],
 )
 cc_library(
   name="control",

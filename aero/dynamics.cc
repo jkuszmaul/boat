@@ -3,6 +3,11 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+DEFINE_double(kp, 4.0, "kP");
+DEFINE_double(kd, 2.0, "kD");
+DEFINE_double(kpm, 10.0, "kPM");
+DEFINE_double(kdm, 1.0, "kDM");
+
 namespace aero {
 
 using Eigen::Quaterniond;
@@ -38,7 +43,7 @@ void ForcesMoments(Input motor_vels, const Param &p, Array3d *forces,
   Input motor_forces = motor_vels.square() * p.kF;
   *forces << 0,
              0,
-             motor_forces.sum();
+             -motor_forces.sum();
 
   // Compute moments
   double gamma = p.kM / p.kF;
@@ -63,7 +68,7 @@ void Dynamics(const State &x, const Array3d &forces, const Array3d &moments, con
   // Derivative of position is velocity
   xdot->block(0, 0, 3, 1) = x.block(3, 0, 3, 1);
   // Accelerations:
-  xdot->block(3, 0, 3, 1) = Fi / p.m - Array3d(0, 0, p.g);
+  xdot->block(3, 0, 3, 1) = Fi / p.m + Array3d(0, 0, p.g);
   // Derivative of quaternion
   xdot->block(6, 0, 4, 1) =
       0.5 * (q * Quaterniond(0, Omega.x(), Omega.y(), Omega.z())).coeffs();

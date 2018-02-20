@@ -7,6 +7,6 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
   aero::Simulate sim;
-  //sim.Run(7.25);
-  sim.Run(1.25);
+  sim.Run(7.25);
+  //sim.Run(3.0);
 }

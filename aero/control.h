@@ -9,7 +9,8 @@ namespace aero {
 void GoalForces(const State &x, const Array3d &r_d, const Array3d &rdot_d,
                 const Array3d &rddot_d, const Array3d &rdddot_d,
                 const double psi_d, const double psidot_d, const Param &p,
-                double *thrust_des, Array3d *moment_des);
+                double *thrust_des, Array3d *moment_des,
+                Eigen::Quaterniond *qd_out = nullptr);
 
 class Trajectory {
  public:
@@ -34,15 +35,20 @@ class Trajectory {
     if (psi != nullptr) {
       double pydot = Poly(t, b_, 1);
       double pxdot = Poly(t, a_, 1);
-      *psi = std::atan2(pydot, pxdot);
+      *psi = -std::atan2(pydot, pxdot);
     }
     if (psidot != nullptr) {
       double pydot = Poly(t, b_, 1);
       double pxdot = Poly(t, a_, 1);
       double pyddot = Poly(t, b_, 2);
       double pxddot = Poly(t, a_, 2);
-      *psidot =
-          (pxdot * pyddot - pxddot * pydot) / (pxdot * pxdot + pydot * pydot);
+      double vel2 = pxdot * pxdot + pydot * pydot;
+      if (vel2 > 1e-4) {
+        *psidot =
+            -(pxdot * pyddot - pxddot * pydot) / vel2;
+      } else {
+        *psidot = 0.0;
+      }
     }
   }
   void PolyPos(double t, int deriv, Array3d *p) {
