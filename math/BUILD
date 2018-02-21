@@ -12,3 +12,8 @@ cc_test(
   deps=[":polygon",
         "@gtest//:main"],
 )
+cc_library(
+  name="jacobian",
+  hdrs=["jacobian.h"],
+  deps=["@eigen//:eigen"],
+)

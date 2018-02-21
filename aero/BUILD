@@ -10,7 +10,8 @@ cc_library(
   srcs=["dynamics.cc"],
   deps=["@boost//:boost",
         "@eigen//:eigen",
-        "@gflags//:gflags"],
+        "@gflags//:gflags",
+        "//math:jacobian"],
   linkopts = ["-pthread"],
 )
 cc_library(

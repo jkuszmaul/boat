@@ -51,8 +51,10 @@ class Simulate {
     //while (t < tf) {
       //std::pair<double, double> tstep = integrator.do_step(f);
       //t = tstep.second;
-      //dopri5.do_step(f, xint, t, dt);
-      {
+      if (true) {
+        lastx = xint;
+        dopri5.do_step(f, xint, t, dt);
+      } else {
         State xdot;
         lastx = xint;
         Step(xint, xdot, t);
@@ -115,6 +117,11 @@ class Simulate {
     //x0(9, 0) = 1.0;
     return x0;
   }
+  void KalmanStep(const Eigen::Array<double, NSTATE, NSTATE + 1> &PX,
+                  Eigen::Array<double, NSTATE, NSTATE + 1> &PXdot, double t) {
+    State x = PX.col(NSTATE);
+    Step(x, PXdot.col(NSTATE), t);
+  }
   void Step(const State &x, State &xdot, double t) {
     Array3d pos_d, vel_d, accel_d, jerk_d;
     double psi_d, psidot_d;
@@ -146,6 +153,7 @@ class Simulate {
   }
   Trajectory traj_;
   Param p_;
+  Sensors sensors_;
 
   std::map<double, std::pair<double, Array3d>> goal_forces;
   std::map<double, std::pair<Array3d, Array3d>> forces_moments;
