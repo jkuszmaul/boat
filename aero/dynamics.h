@@ -1,9 +1,9 @@
 #pragma once
 
+#include <random>
 #include <Eigen/Core>
 
 #include "params.h"
-#include <random>
 
 namespace aero {
 
@@ -76,7 +76,7 @@ class Sensors {
       stdmag{0.3 * M_PI / 180., .3 * M_PI / 180., .3 * M_PI / 180.}, // rad
       stdgyro{0.13 * M_PI / 180, 0.13 * M_PI / 180,
               0.13 * M_PI / 180},                        // rad / s
-      stdaccel{0.0025 * 9.8, 0.0025 * 9.8, 0.0025 * 9.8} // m / s^2
+      stdaccel{0.025 * 9.8, 0.025 * 9.8, 0.025 * 9.8} // m / s^2
   ;
   double rho_ = 1.225; // kg / m^3
   double stdpres{0.01}; // kPa

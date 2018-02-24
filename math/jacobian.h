@@ -17,7 +17,7 @@ Eigen::Matrix<T, M, N>
     xdiff(ii, 0) = h;
     y1 = f(x0 + xdiff);
     y2 = f(x0 - xdiff);
-    J.col(ii) = (y2 - y1) / (2.0 * h);
+    J.col(ii) = (y1 - y2) / (2.0 * h);
   }
   return J;
 }

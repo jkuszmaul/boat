@@ -8,5 +8,5 @@ int main(int argc, char *argv[]) {
   google::InstallFailureSignalHandler();
   aero::Simulate sim;
   sim.Run(7.25);
-  //sim.Run(3.0);
+  //sim.Run(0.2);
 }

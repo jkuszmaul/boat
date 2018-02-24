@@ -5,6 +5,7 @@
 #include "eigen_int.hpp"
 #include "gflags.h"
 #include <functional>
+#include "math/jacobian.h"
 #include <map>
 
 //DEFINE_double(thrust, 0.0, "Thrust to give to dynamics");
@@ -33,8 +34,21 @@ class Simulate {
 
   void Run(double tf) {
     double niter = 1500;
+    //double niter = 4;
     double dt = tf / niter;
+    int ngps = 0.3 / dt, nimu = 0.02 / dt;
     State x0 = CalcX0();
+    // contains P and xhat
+    Eigen::Array<double, NSTATE, NSTATE+1> PX, PXdot;
+    PX = PX.Zero();
+    for (int ii = 0; ii < NSTATE; ++ii) {
+      PX(ii, ii) = 0.1;
+    }
+    PX.col(NSTATE) = x0;
+    PX.block(0, NSTATE, 3, 1) += 0.1;
+    PX.block(3, NSTATE, 3, 1) -= 0.01;
+    PX.block(6, NSTATE, 4, 1) -= 0;
+    PX.block(10, NSTATE, 3, 1) *= 1.05;
     //std::cout << "x0: " << x0.transpose() << "\n";
 
     //dense_output_runge_kutta<controlled_runge_kutta<runge_kutta_dopri5<State>>>
@@ -42,23 +56,52 @@ class Simulate {
     runge_kutta_dopri5<State> dopri5;;
     //integrator.initialize(x0, 0, tf / niter);
     auto f = std::bind(&Simulate::Step, this, std::placeholders::_1,
-                       std::placeholders::_2, std::placeholders::_3);
+                       std::placeholders::_1, std::placeholders::_2,
+                       std::placeholders::_3);
     State xint = x0;
     double t = 0;
-    std::cout << "#t,px,py,pz,vx,vy,vz,qx,qy,qz,qw,wx,wy,wz,accx,accy,accz,trajx,trajy,trajz,trajvx,trajvy,trajvz,Fbz,mx,my,mz,qdx,qdy,qdz,qdw";
+    std::cout << "#t,px,py,pz,vx,vy,vz,qx,qy,qz,qw,wx,wy,wz,accx,accy,accz,"
+                 "trajx,trajy,trajz,trajvx,trajvy,trajvz,Fbz,mx,my,mz,qdx,qdy,"
+                 "qdz,qdw,pxhat,pyhat,pzhat,vxhat,vyhat,vzhat,qxhat,qyhat,"
+                 "qzhat,qwhat,wxhat,wyhat,wzhat\n";
     State lastx;
     for (double ii = 0; ii <= niter; ii += 1) {
     //while (t < tf) {
       //std::pair<double, double> tstep = integrator.do_step(f);
       //t = tstep.second;
-      if (true) {
+      if (false) {
         lastx = xint;
         dopri5.do_step(f, xint, t, dt);
       } else {
         State xdot;
         lastx = xint;
-        Step(xint, xdot, t);
+        Step(xint, PX.col(NSTATE), xdot, t);
+        //Step(xint, xint, xdot, t);
+        //std::cout << xdot.transpose() << "\n";
         xint += xdot * dt;
+
+        KalmanPredict(PX, PXdot, t);
+        //std::cout << PXdot.col(NSTATE).transpose() << "\n";
+        PX += PXdot * dt;
+        //std::cout << xint.transpose() << "\n";
+        //std::cout << PX.col(NSTATE).transpose() << "\n";
+        if (true) { // Normalize quaternions
+          Eigen::Vector4d q = PX.block(6, NSTATE, 4, 1);
+          PX.block(6, NSTATE, 4, 1) /= q.norm();
+          q = xint.block(6, 0, 4, 1);
+          xint.block(6, 0, 4, 1) /= q.norm();
+        }
+      }
+      if (ii > 0) {
+        // Perform kalman updates if needed:
+        if ((int)ii % ngps == 0) {
+          //std::cout << "GPS UPDATE!\n";
+          KalmanGPSUpdate(xint, ngps * dt, &PX);
+        }
+        if ((int)ii % nimu == 0) {
+          //std::cout << "IMU UPDATE!\n";
+          KalmanIMUUpdate(xint, nimu * dt, &PX);
+        }
       }
       State x = lastx;
       State xdot = xdots_.lower_bound(t)->second;
@@ -86,7 +129,9 @@ class Simulate {
                 << xdot.block(3, 0, 3, 1).transpose() << " " << pos.transpose()
                 << " " << vel.transpose() << " " << fm.first[2] << " "
                 << fm.second.transpose() << " "
-                << qds_.lower_bound(t)->second.coeffs().transpose() << "\n";
+                << qds_.lower_bound(t)->second.coeffs().transpose() << " "
+                << PX.col(NSTATE).transpose() << "\n";
+      //std::cout << t+dt << " " << PX.col(NSTATE).transpose() << "\n";
       //std::cout << t << " traj: " << pos.transpose()
       //          << " traj vel: " << vel.transpose()
       //          << " goal time: " << it->first
@@ -117,12 +162,66 @@ class Simulate {
     //x0(9, 0) = 1.0;
     return x0;
   }
-  void KalmanStep(const Eigen::Array<double, NSTATE, NSTATE + 1> &PX,
-                  Eigen::Array<double, NSTATE, NSTATE + 1> &PXdot, double t) {
+  void KalmanPredict(const Eigen::Array<double, NSTATE, NSTATE + 1> &PX,
+                     Eigen::Array<double, NSTATE, NSTATE + 1> &PXdot,
+                     double t) {
+    MatrixNNd P = PX.block(0, 0, NSTATE, NSTATE);
     State x = PX.col(NSTATE);
-    Step(x, PXdot.col(NSTATE), t);
+    State xdot;
+    Step(x, x, xdot, t);
+    PXdot.col(NSTATE) = xdot;
+    MatrixNNd A =
+        math::jacobian<double, NSTATE, NSTATE>([this, x, t](State xjac) {
+                                                 State xdot;
+                                                 this->Step(xjac, x, xdot, t);
+                                                 return xdot;
+                                               },
+                                               x);
+    MatrixNNd Q = MatrixNNd::Zero();
+    Q.diagonal() << 1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1;
+    PXdot.block(0, 0, NSTATE, NSTATE) = A * P + P * A.transpose() + Q;
   }
-  void Step(const State &x, State &xdot, double t) {
+  void KalmanGPSUpdate(const State &x, double dt,
+                       Eigen::Array<double, NSTATE, NSTATE + 1> *PX) {
+    if (PX == nullptr) {
+      return;
+    }
+    // Actuall perform measurement
+    Sensors::GPSMat zgps, zxhat;
+    Sensors::GPSLin Cgps;
+    Sensors::GPSCov Rgps;
+    // Actually perform measurement.
+    sensors_.GetGPS(x, dt, &zgps, nullptr, &Rgps);
+    // Compute expected measurement
+    sensors_.GetGPSNoiseless(PX->col(NSTATE), &zxhat, &Cgps);
+    MatrixNNd Pmat = PX->block(0, 0, NSTATE, NSTATE);
+    Eigen::Matrix<double, NSTATE, Sensors::NGPS> K =
+        Pmat * Cgps.transpose() *
+        (Cgps * Pmat * Cgps.transpose() + Rgps).inverse();
+    PX->block(0, 0, NSTATE, NSTATE) = (Pmat.Identity() - K * Cgps) * Pmat;
+    PX->col(NSTATE) = PX->col(NSTATE) + (K * (zgps - zxhat)).array();
+  }
+  void KalmanIMUUpdate(const State &x, double dt,
+                       Eigen::Array<double, NSTATE, NSTATE + 1> *PX) {
+    if (PX == nullptr) {
+      return;
+    }
+    // Actuall perform measurement
+    Sensors::IMUMat zimu, zxhat;
+    Sensors::IMULin Cimu;
+    Sensors::IMUCov Rimu;
+    // Actually perform measurement.
+    sensors_.GetIMU(x, dt, &zimu, nullptr, &Rimu);
+    // Compute expected measurement
+    sensors_.GetIMUNoiseless(PX->col(NSTATE), &zxhat, &Cimu);
+    MatrixNNd Pmat = PX->block(0, 0, NSTATE, NSTATE);
+    Eigen::Matrix<double, NSTATE, Sensors::NIMU> K =
+        Pmat * Cimu.transpose() *
+        (Cimu * Pmat * Cimu.transpose() + Rimu).inverse();
+    PX->block(0, 0, NSTATE, NSTATE) = (Pmat.Identity() - K * Cimu) * Pmat;
+    PX->col(NSTATE) = PX->col(NSTATE) + (K * (zimu - zxhat)).array();
+  }
+  void Step(const State &x, const State &xhat, State &xdot, double t) {
     Array3d pos_d, vel_d, accel_d, jerk_d;
     double psi_d, psidot_d;
     traj_.StateAtTime(t, &pos_d, &vel_d, &accel_d, &jerk_d, &psi_d, &psidot_d);
@@ -130,7 +229,8 @@ class Simulate {
     Array3d moment_des;
     double thrust_des;
     Quaterniond qd_out;
-    GoalForces(x, pos_d, vel_d, accel_d, jerk_d, psi_d, psidot_d, p_, &thrust_des, &moment_des, &qd_out);
+    GoalForces(xhat, pos_d, vel_d, accel_d, jerk_d, psi_d, psidot_d, p_,
+               &thrust_des, &moment_des, &qd_out);
     goal_forces[t] = {thrust_des, moment_des};
     qds_[t] = qd_out;
 

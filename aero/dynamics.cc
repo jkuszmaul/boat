@@ -3,6 +3,7 @@
 #include "math/jacobian.h"
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <functional>
 
 DEFINE_double(kp, 4.0, "kP");
 DEFINE_double(kd, 2.0, "kD");
@@ -95,7 +96,7 @@ Sensors::IMUMat Sensors::hIMU(State x) {
   imu.block(6, 0, 3, 1) = Rinv * Eigen::Vector3d(1, 0, 0);
   // Barometer, presssure relative to surface
   // Given relatively small altitude differences, use constant air density assumption
-  imu(10, 0) = -rho_ * 9.8 * x(2, 0);
+  imu(9, 0) = -rho_ * 9.8 * x(2, 0);
   return imu;
 }
 
